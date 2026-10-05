@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Catedral Basílica de Manizales · Recreación 3D</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root { --ink:#efefec; --muted:#9c9d9f; --glass:rgba(14,15,17,.6); --line:rgba(239,239,236,.14); }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; overflow:hidden; background:#0b0c0e; font-family:Inter,system-ui,sans-serif; color:var(--ink); }
+  canvas { display:block; position:fixed; inset:0; filter:grayscale(1) contrast(1.06); }
+  #vignette { position:fixed; inset:0; pointer-events:none; background:radial-gradient(ellipse at 50% 45%, transparent 45%, rgba(0,0,0,.62) 100%); }
+  #grain { position:fixed; inset:0; pointer-events:none; opacity:.09; mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>"); }
+  .glass { background:var(--glass); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); border:1px solid var(--line); border-radius:4px; }
+
+  header { position:fixed; top:28px; left:28px; max-width:360px; }
+  header small { letter-spacing:.28em; text-transform:uppercase; font-size:10px; color:var(--muted); font-weight:500; }
+  header h1 { font-family:"Cormorant Garamond",serif; font-weight:500; font-size:44px; line-height:.98; margin:10px 0 12px; }
+  header p { margin:0; font-size:12.5px; line-height:1.6; color:var(--muted); max-width:290px; }
+
+  aside { position:fixed; top:28px; right:28px; width:250px; padding:16px 18px; font-size:12px; }
+  aside h2 { font-size:10px; letter-spacing:.28em; text-transform:uppercase; margin:0 0 12px; font-weight:500; color:var(--muted); }
+  aside dl { margin:0; display:grid; grid-template-columns:auto 1fr; gap:7px 14px; }
+  aside dt { color:var(--muted); }
+  aside dd { margin:0; text-align:right; }
+  aside p { margin:12px 0 0; padding-top:12px; border-top:1px solid var(--line); color:var(--muted); line-height:1.5; font-size:11px; }
+
+  nav { position:fixed; left:50%; bottom:26px; transform:translateX(-50%); padding:8px; display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:center; max-width:calc(100vw - 24px); }
+  .seg { display:flex; }
+  button { font:inherit; font-size:11px; letter-spacing:.14em; text-transform:uppercase; font-weight:500; color:var(--muted); background:transparent; border:0; border-radius:2px; padding:10px 13px; cursor:pointer; transition:background .18s, color .18s, transform .12s; white-space:nowrap; }
+  button:hover { color:var(--ink); }
+  button:active { transform:scale(.97); }
+  button.on { background:var(--ink); color:#0b0c0e; }
+  button.cta { border:1px solid var(--ink); color:var(--ink); }
+  button.cta:hover { background:var(--ink); color:#0b0c0e; }
+  button:disabled { opacity:.4; cursor:default; }
+  .sep { width:1px; height:22px; background:var(--line); }
+
+  .label { position:fixed; left:0; top:0; pointer-events:none; font-size:10px; letter-spacing:.16em; text-transform:uppercase; padding:5px 9px; background:rgba(11,12,14,.7); border:1px solid var(--line); white-space:nowrap; transform:translate(-50%,-190%); transition:opacity .25s; }
+  .label::after { content:""; position:absolute; left:50%; top:100%; width:1px; height:20px; background:rgba(239,239,236,.55); }
+  .label.warn { background:var(--ink); color:#0b0c0e; }
+
+  #hint { position:fixed; left:28px; bottom:32px; font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:rgba(239,239,236,.35); }
+  #intro { position:fixed; inset:0; background:#0b0c0e; display:grid; place-items:center; transition:opacity 1.2s ease; z-index:10; }
+  #intro div { text-align:center; font-family:"Cormorant Garamond",serif; font-size:30px; }
+  #intro span { display:block; font-family:Inter,sans-serif; font-size:10px; letter-spacing:.3em; text-transform:uppercase; color:var(--muted); margin-top:12px; }
+  #intro.gone { opacity:0; pointer-events:none; }
+
+  @media (max-width:820px) {
+    aside, #hint, header p { display:none; }
+    header { top:16px; left:16px; right:16px; } header h1 { font-size:28px; }
+    nav { bottom:12px; gap:4px; } .sep { display:none; }
+    button { padding:9px 9px; font-size:10px; letter-spacing:.08em; }
+  }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="vignette"></div><div id="grain"></div>
+<div id="intro"><div>Catedral Basílica de Manizales<span>Cargando maqueta…</span></div></div>
+
+<header>
+  <small>Manizales · Caldas · Colombia</small>
+  <h1>Catedral Basílica de Manizales</h1>
+  <p>Maqueta 3D de la catedral y de la torre que quedó inclinada tras el sismo del 10 de agosto.</p>
+</header>
+
+<aside class="glass">
+  <h2>Ficha</h2>
+  <dl>
+    <dt>Advocación</dt><dd>Ntra. Sra. del Rosario</dd>
+    <dt>Diseño</dt><dd>Julien Polti</dd>
+    <dt>Construcción</dt><dd>1928 – 1939</dd>
+    <dt>Material</dt><dd>Concreto reforzado</dd>
+    <dt>Torre central</dt><dd>≈ 106 m</dd>
+    <dt>Estilo</dt><dd>Neogótico</dd>
+  </dl>
+  <p>Maqueta artística hecha con geometría procedural. Proporciones, entorno y ángulo de inclinación son aproximados; no es un modelo estructural.</p>
+</aside>
+
+<div class="label" id="l-spire">Torre central · ≈106 m</div>
+<div class="label warn" id="l-tower">Torre inclinada</div>
+
+<nav class="glass">
+  <div class="seg" id="views">
+    <button data-view="fachada">Fachada</button>
+    <button data-view="aerea">Aérea</button>
+    <button data-view="torre">La torre</button>
+  </div>
+  <span class="sep"></span>
+  <div class="seg">
+    <button id="b-antes">Antes</button>
+    <button id="b-despues" class="on">Después</button>
+  </div>
+  <span class="sep"></span>
+  <button class="cta" id="b-quake">▶ Revivir el sismo</button>
+</nav>
+<div id="hint">Arrastra para orbitar · rueda para acercar</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+/* ---------- renderer / scene ---------- */
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+document.body.prepend(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.Fog(0x101214, 150, 620);
+scene.background = (() => {
+  const c = document.createElement('canvas'); c.width = 4; c.height = 256;
+  const x = c.getContext('2d'), g = x.createLinearGradient(0, 0, 0, 256);
+  g.addColorStop(0, '#040506'); g.addColorStop(.6, '#101214'); g.addColorStop(1, '#17191c');
+  x.fillStyle = g; x.fillRect(0, 0, 4, 256);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+})();
+
+const camera = new THREE.PerspectiveCamera(40, innerWidth / innerHeight, 1, 1600);
+camera.position.set(-230, 200, 280);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.target.set(0, 34, 0);
+controls.enableDamping = true;
+controls.maxPolarAngle = Math.PI * 0.495;
+controls.minDistance = 40; controls.maxDistance = 420;
+controls.autoRotate = true; controls.autoRotateSpeed = 0.35;
+controls.addEventListener('start', () => { controls.autoRotate = false; });
+
+// low, moody light: one raking key, a faint cold rim, almost no fill
+scene.add(new THREE.HemisphereLight(0xaab2c0, 0x0c0d0f, 0.32));
+const sun = new THREE.DirectionalLight(0xffffff, 2.5);
+sun.position.set(-130, 95, 150);
+sun.castShadow = true;
+sun.shadow.mapSize.set(4096, 4096);
+Object.assign(sun.shadow.camera, { left: -170, right: 170, top: 150, bottom: -130, near: 10, far: 520 });
+sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.6;
+scene.add(sun);
+const rim = new THREE.DirectionalLight(0xbfd0ff, 0.75); rim.position.set(150, 70, -170); scene.add(rim);
+
+/* ---------- helpers ---------- */
+const mat = (color, o = {}) => new THREE.MeshStandardMaterial({ color, roughness: .95, flatShading: true, ...o });
+const M = {
+  concrete: mat(0xe6e5e1), concreteDark: mat(0xcfcfcb), roof: mat(0x77797c), spire: mat(0x8a8c8e),
+  dark: mat(0x1b1c1f), bronze: mat(0x55565a, { metalness: .5, roughness: .5 }),
+  city: mat(0xffffff), paving: mat(0x6c6e72), ground: mat(0x2c2e31),
+};
+const world = new THREE.Group(); scene.add(world);
+
+function box(w, h, d, m, x = 0, y = 0, z = 0, parent) {
+  const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m);
+  o.position.set(x, y, z); o.castShadow = o.receiveShadow = true;
+  parent?.add(o); return o;
+}
+function prism(w, h, len, m, parent) {              // gabled roof, ridge along z
+  const s = new THREE.Shape(); s.moveTo(-w / 2, 0); s.lineTo(w / 2, 0); s.lineTo(0, h); s.closePath();
+  const g = new THREE.ExtrudeGeometry(s, { depth: len, bevelEnabled: false }); g.translate(0, 0, -len / 2);
+  const o = new THREE.Mesh(g, m); o.castShadow = o.receiveShadow = true; parent?.add(o); return o;
+}
+function cone(r, h, seg, m, parent) {
+  const o = new THREE.Mesh(new THREE.ConeGeometry(r, h, seg), m);
+  o.rotation.y = Math.PI / seg; o.castShadow = true; parent?.add(o); return o;
+}
+function statue(parent, x, y, z, s = 1) {
+  const b = new THREE.Mesh(new THREE.CylinderGeometry(.3 * s, .55 * s, 2.8 * s, 6), M.concrete); b.position.set(x, y + 1.4 * s, z); b.castShadow = true; parent.add(b);
+  const h = new THREE.Mesh(new THREE.SphereGeometry(.45 * s, 8, 6), M.concrete); h.position.set(x, y + 3.1 * s, z); parent.add(h);
+}
+function canvasTex(w, h, draw) {
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  draw(c.getContext('2d'), w, h);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8; return t;
+}
+function archPath(c, x, y, w, h) {                  // gothic pointed arch
+  c.beginPath(); c.moveTo(x, y + h); c.lineTo(x, y + h * .42);
+  c.quadraticCurveTo(x + w * .02, y + h * .12, x + w / 2, y);
+  c.quadraticCurveTo(x + w * .98, y + h * .12, x + w, y + h * .42);
+  c.lineTo(x + w, y + h); c.closePath();
+}
+function decal(w, h, tex, parent, x, y, z, ry = 0, o = {}) {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h),
+    new THREE.MeshStandardMaterial({ map: tex, transparent: true, alphaTest: .4, side: THREE.DoubleSide, roughness: .9, ...o }));
+  m.position.set(x, y, z); m.rotation.y = ry; parent.add(m); return m;
+}
+const glow = (tex) => ({ emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: .5 });   // windows lit from inside
+
+/* ---------- textures ---------- */
+const TRACERY = '#2b2d31', GLASS = '#b9bec6', STONE = '#e4e3df';
+const texRose = canvasTex(512, 680, (c, w, h) => {
+  archPath(c, 8, 8, w - 16, h - 16); c.fillStyle = GLASS; c.fill(); c.save(); c.clip();
+  c.strokeStyle = TRACERY; c.lineCap = 'round';
+  const cx = w / 2, cy = 300, R = 196;
+  c.lineWidth = 14; c.beginPath(); c.arc(cx, cy, R, 0, 7); c.stroke();
+  c.lineWidth = 10;
+  for (let i = 0; i < 8; i++) {
+    const a = i * Math.PI / 4;
+    c.beginPath(); c.arc(cx + Math.cos(a) * 122, cy + Math.sin(a) * 122, 60, 0, 7); c.stroke();
+    c.beginPath(); c.moveTo(cx + Math.cos(a + .39) * 58, cy + Math.sin(a + .39) * 58);
+    c.lineTo(cx + Math.cos(a + .39) * R, cy + Math.sin(a + .39) * R); c.stroke();
+  }
+  for (let i = 0; i < 6; i++) { const a = i * Math.PI / 3; c.beginPath(); c.arc(cx + Math.cos(a) * 30, cy + Math.sin(a) * 30, 26, 0, 7); c.stroke(); }
+  c.beginPath(); c.arc(cx, cy, 58, 0, 7); c.stroke();
+  c.lineWidth = 12; c.beginPath(); c.moveTo(0, 520); c.lineTo(w, 520); c.stroke();
+  for (let i = 0; i < 9; i++) { archPath(c, 22 + i * 52, 535, 44, 160); c.lineWidth = 9; c.stroke(); }
+  c.restore(); archPath(c, 8, 8, w - 16, h - 16); c.lineWidth = 18; c.strokeStyle = TRACERY; c.stroke();
+});
+const texLancet = canvasTex(128, 320, (c, w, h) => {
+  archPath(c, 6, 6, w - 12, h - 12); c.fillStyle = GLASS; c.fill();
+  c.strokeStyle = TRACERY; c.lineWidth = 12; c.stroke();
+  c.lineWidth = 7; c.beginPath(); c.moveTo(w / 2, 70); c.lineTo(w / 2, h); c.stroke();
+  c.beginPath(); c.arc(w / 2, 74, 26, 0, 7); c.stroke();
+});
+const texDoor = canvasTex(128, 220, (c, w, h) => {
+  archPath(c, 6, 6, w - 12, h - 12); c.fillStyle = '#141518'; c.fill();
+  c.strokeStyle = STONE; c.lineWidth = 10; c.stroke();
+});
+const texArcade = canvasTex(128, 256, (c, w, h) => {      // one bay of the gallery, tiled along x
+  c.fillStyle = STONE; c.fillRect(0, 0, w, h);
+  c.globalCompositeOperation = 'destination-out';
+  archPath(c, 16, 54, w - 32, 150); c.fill();
+  c.beginPath(); c.arc(w / 2, 28, 15, 0, 7); c.fill();
+  c.fillRect(10, 222, w - 20, 5);
+  c.globalCompositeOperation = 'source-over';
+  c.fillStyle = STONE; c.fillRect(w / 2 - 3, 204, 6, 30);
+});
+texArcade.wrapS = THREE.RepeatWrapping;
+const arcade = (len, parent, x, y, z, ry = 0) => {
+  const t = texArcade.clone(); t.needsUpdate = true; t.repeat.x = Math.round(len / 2);
+  return decal(len, 4.6, t, parent, x, y, z, ry);
+};
+const texClock = canvasTex(256, 256, (c, w) => {
+  c.fillStyle = '#8d9094'; c.fillRect(0, 0, w, w);
+  c.fillStyle = '#f2f2ee'; c.fillRect(18, 18, w - 36, w - 36);
+  c.strokeStyle = '#1e2023'; c.lineWidth = 6; c.beginPath(); c.arc(128, 128, 96, 0, 7); c.stroke();
+  for (let i = 0; i < 12; i++) {
+    const a = i * Math.PI / 6; c.lineWidth = i % 3 ? 4 : 8;
+    c.beginPath(); c.moveTo(128 + Math.cos(a) * 74, 128 + Math.sin(a) * 74); c.lineTo(128 + Math.cos(a) * 90, 128 + Math.sin(a) * 90); c.stroke();
+  }
+  c.lineCap = 'round';
+  c.lineWidth = 9; c.beginPath(); c.moveTo(128, 128); c.lineTo(168, 150); c.stroke();
+  c.lineWidth = 6; c.beginPath(); c.moveTo(128, 128); c.lineTo(86, 182); c.stroke();
+});
+const texCrack = canvasTex(256, 512, (c) => {
+  c.strokeStyle = '#0c0c0d'; c.lineJoin = 'round';
+  const run = (x, y, n, lw, dx) => {
+    c.lineWidth = lw; c.beginPath(); c.moveTo(x, y);
+    for (let i = 0; i < n; i++) {
+      x += dx + (Math.sin(i * 12.9898 + x) * 22); y += 22 + (i % 3) * 9; c.lineTo(x, y);
+      if (i % 4 === 2 && lw > 3) { c.stroke(); run(x, y, 5, lw * .5, -dx * 1.6); c.lineWidth = lw; c.beginPath(); c.moveTo(x, y); }
+    }
+    c.stroke();
+  };
+  run(40, 0, 16, 4, 9); run(190, 10, 9, 2.5, -7);
+});
+
+/* ---------- cathedral ---------- */
+const cathedral = new THREE.Group(); cathedral.position.y = 3; world.add(cathedral);
+const S = 24;        // half footprint
+const H1 = 20;       // balcony level
+const H2 = 34;       // nave eave
+
+// atrium + front steps
+box(56, 3, 56, M.concreteDark, 0, 1.5, 0, world);
+for (let i = 0; i < 6; i++) box(34, 3 - i * .5, .7, M.concreteDark, 0, (3 - i * .5) / 2, 28.35 + i * .7, world);
+
+// crossed naves with gabled roofs
+for (const ry of [0, Math.PI / 2]) {
+  const arm = new THREE.Group(); arm.rotation.y = ry; cathedral.add(arm);
+  box(20, H2, S * 2, M.concrete, 0, H2 / 2, 0, arm);
+  prism(20, 13.6, S * 2, M.concrete, arm).position.y = H2;
+  prism(21.6, 14.6, S * 2 - 1.2, M.roof, arm).position.y = H2;
+}
+// corner blocks
+for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+  box(14, H1, 14, M.concrete, sx * 17, H1 / 2, sz * 17, cathedral);
+  box(14.8, .7, 14.8, M.concreteDark, sx * 17, H1 + .1, sz * 17, cathedral);
+}
+
+// one facade, built facing +z and repeated on the four sides
+for (let k = 0; k < 4; k++) {
+  const f = new THREE.Group(); f.rotation.y = k * Math.PI / 2; cathedral.add(f);
+  const Z = S + .08;
+  decal(13, 17.3, texRose, f, 0, 25.7, Z, 0, glow(texRose));          // great window
+  for (const sx of [-1, 1]) {                                         // buttresses with pinnacles
+    box(1.3, H2 + 2, 1.2, M.concreteDark, sx * 10.3, (H2 + 2) / 2, S + .3, f);
+    cone(.9, 4, 4, M.spire, f).position.set(sx * 10.3, H2 + 4, S + .3);
+  }
+  box(20, .7, 2.2, M.concreteDark, 0, H1 - 2, S + 1, f);              // facade balcony
+  arcade(20, f, 0, H1 + .7, S + 2);
+  for (let i = -5; i <= 5; i++) {                                     // stepped lancets in the gable
+    const h = 8.2 - Math.abs(i) * 1.3;
+    if (h > .8) box(.75, h, .2, M.dark, i * 1.45, H2 + 1.2 + h / 2, S, f).castShadow = false;
+  }
+  statue(f, 0, H2 + 13.4, S - .6, 1.2);                               // figure on the gable apex
+  decal(6, 10, texDoor, f, 0, 5, Z + .1);                             // portal
+  for (const sx of [-1, 1]) {
+    statue(f, sx * 5.5, 0, S + 1.2, .9); statue(f, sx * 8.2, 0, S + 1.2, .9);
+    decal(2.6, 6.5, texLancet, f, sx * 17, 6.5, Z, 0, glow(texLancet));   // corner block windows
+    decal(2.2, 4.4, texLancet, f, sx * 17, 15, Z, 0, glow(texLancet));
+    arcade(14, f, sx * 17, H1 + 2.6, S);                              // corner gallery
+  }
+}
+
+// central tower
+const central = new THREE.Group(); cathedral.add(central);
+box(12, 28, 12, M.concrete, 0, 44, 0, central);
+box(13.6, 1, 13.6, M.concreteDark, 0, 58.5, 0, central);
+box(9.6, 8, 9.6, M.concrete, 0, 63, 0, central);
+for (let k = 0; k < 4; k++) {
+  const g = new THREE.Group(); g.rotation.y = k * Math.PI / 2; central.add(g);
+  decal(3, 8, texLancet, g, -2.8, 52, 6.06, 0, glow(texLancet)); decal(3, 8, texLancet, g, 2.8, 52, 6.06, 0, glow(texLancet));
+  decal(2.4, 6, texLancet, g, 0, 63, 4.86, 0, glow(texLancet));
+  cone(1.3, 17, 4, M.spire, g).position.set(5.6, 68.5, 5.6);
+  box(2.2, 2, 2.2, M.concrete, 5.6, 60, 5.6, g);
+  statue(g, 0, 59, 6.2, .9);
+}
+for (const ry of [0, Math.PI / 2]) { const g = prism(8.6, 7, 10.4, M.spire, central); g.position.y = 67; g.rotation.y = ry; }
+cone(5.6, 44, 8, M.spire, central).position.y = 89;
+const ring = new THREE.Mesh(new THREE.CylinderGeometry(1.3, 1.3, 1.1, 8), M.spire); ring.position.y = 103; central.add(ring);
+box(.35, 4.2, .35, M.concrete, 0, 112.6, 0, central); box(2.2, .35, .35, M.concrete, 0, 113.3, 0, central);
+const anchorSpire = new THREE.Object3D(); anchorSpire.position.y = 114; central.add(anchorSpire);
+
+// corner towers (origin = centre of the shaft at balcony level)
+function makeTower(clock) {
+  const t = new THREE.Group();
+  box(7.4, 14, 7.4, M.concrete, 0, 7, 0, t);
+  box(8.2, 1.2, 8.2, M.concrete, 0, 13.3, 0, t);
+  box(9, .8, 9, M.concreteDark, 0, 14.3, 0, t);
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) box(.9, 5.2, .9, M.concrete, sx * 3.3, 17.3, sz * 3.3, t);
+  const bell = new THREE.Mesh(new THREE.CylinderGeometry(.9, 1.5, 2.4, 10), M.bronze); bell.position.y = 17.6; t.add(bell);
+  box(8.2, .7, 8.2, M.concreteDark, 0, 20.2, 0, t);
+  for (const ry of [0, Math.PI / 2]) { const g = prism(6.4, 4.4, 8, M.spire, t); g.position.y = 20.5; g.rotation.y = ry; }
+  cone(3.7, 30, 8, M.spire, t).position.y = 35.5;
+  statue(t, 0, 50.2, 0, 1);
+  for (let k = 0; k < 4; k++) {
+    const g = new THREE.Group(); g.rotation.y = k * Math.PI / 2; t.add(g);
+    if (clock) decal(4.4, 4.4, texClock, g, 0, 8, 3.76, 0, { alphaTest: 0, transparent: false });
+    else decal(2.2, 5.4, texLancet, g, 0, 8, 3.76, 0, glow(texLancet));
+  }
+  return t;
+}
+const pivot = new THREE.Group();          // hinge on the inner edge: the tower falls in towards the nave
+let leaning;
+for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+  const lean = sx === -1 && sz === 1, t = makeTower(lean);
+  if (lean) { pivot.position.set(-13.3, H1, 15); t.position.set(-3.7, 0, 2); pivot.add(t); cathedral.add(pivot); leaning = t; }
+  else { t.position.set(sx * 17, H1, sz * 17); cathedral.add(t); }
+}
+const anchorTower = new THREE.Object3D(); anchorTower.position.y = 26; leaning.add(anchorTower);
+
+// damage: cracks + rubble where the tower hit
+const crackMat = { alphaTest: 0, depthWrite: false, opacity: 0 };
+const cracks = [
+  decal(8, 16, texCrack, cathedral, -15, 11, S + .16, 0, crackMat),
+  decal(8, 13, texCrack, cathedral, -10.14, 27, 17.5, -Math.PI / 2, crackMat),
+];
+const rubble = new THREE.Group(); cathedral.add(rubble);
+for (let i = 0; i < 28; i++) {
+  const s = .45 + (i * 7 % 10) / 8, low = i % 3 === 0;
+  const r = box(s, s * .7, s * .9, i % 2 ? M.concrete : M.concreteDark,
+    low ? -19 + (i * 13 % 12) : -13.5 + (i * 5 % 7) * .5, low ? s * .3 : H1 + .5 + s * .3, low ? 25 + (i % 5) * .6 : 11 + (i * 17 % 12), rubble);
+  r.rotation.set(i, i * 2.1, i * .7);
+}
+
+/* ---------- city (layout from satellite view: cathedral block between Cra 22/23 and Cll 22/23) ---------- */
+const P = 76, BLOCK = 64;                 // block pitch and size; +z is north (Plaza de Bolívar)
+let seed = 7; const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+const inst = [];
+const lot = (x, z, w, d, h, y = 0, shade = .5) => inst.push([x, y + h / 2, z, w, h, d, shade]);
+const TALL = { '1,0': 52, '-1,-1': 74, '1,-1': 60, '-1,1': 24, '1,1': 30, '0,-1': 34 };   // towers seen around the cathedral
+for (let i = -5; i <= 5; i++) for (let j = -5; j <= 5; j++) {
+  if (i === 0 && (j === 0 || j === 1)) continue;
+  const cx = i * P, cz = j * P;
+  lot(cx, cz, BLOCK + 3, BLOCK + 3, .35, 0, .3);                                        // sidewalk
+  if (i === 0 && j === 2) { lot(cx, cz, 60, 46, 17, 0, .7); lot(cx, cz, 62, 48, 1, 17, .8); continue; }   // Gobernación
+  const nx = 2 + (rnd() * 2 | 0), nz = 2 + (rnd() * 2 | 0), tall = TALL[i + ',' + j];
+  const tallAt = tall ? (rnd() * nx * nz | 0) : -1;
+  for (let a = 0; a < nx; a++) for (let b = 0; b < nz; b++) {
+    const w = BLOCK / nx, d = BLOCK / nz, r = rnd();
+    let h = 7 + r * r * 24; if (Math.abs(i) + Math.abs(j) > 3 && rnd() < .05) h = 40 + rnd() * 30;
+    if (i === -1 && j === 0) h = 8 + r * 6;                                             // low colonial fronts east of the cathedral
+    if (a * nz + b === tallAt) h = tall;
+    const x = cx - BLOCK / 2 + w * (a + .5), z = cz - BLOCK / 2 + d * (b + .5);
+    lot(x, z, w - .5, d - .5, h, 0, .35 + rnd() * .3);
+    if (h > 28) lot(x, z, w * .4, d * .4, 3, h, .4);                                    // rooftop plant
+  }
+}
+const cityMesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), M.city, inst.length);
+const m4 = new THREE.Matrix4(), col = new THREE.Color();
+inst.forEach(([x, y, z, w, h, d, s], n) => {
+  m4.makeScale(w, h, d).setPosition(x, y, z); cityMesh.setMatrixAt(n, m4); cityMesh.setColorAt(n, col.setScalar(s * .5));
+});
+cityMesh.castShadow = cityMesh.receiveShadow = true; world.add(cityMesh);
+
+// ground with a hole for the sunken Plaza de Bolívar
+const HP = BLOCK / 2, pz = P;
+for (const [x, z, w, d] of [[-616, 0, 1168, 2400], [616, 0, 1168, 2400], [0, (pz - HP - 1200) / 2, 64, 1200 + pz - HP], [0, (pz + HP + 1200) / 2, 64, 1200 - pz - HP]])
+  box(w, .2, d, M.ground, x, -.1, z, world).castShadow = false;
+box(BLOCK, .4, BLOCK, M.paving, 0, -4.2, pz, world);                                    // plaza floor
+for (let i = 0; i < 8; i++) box(BLOCK, 4 - i * .5, .9, M.paving, 0, -4 + (4 - i * .5) / 2, pz - HP + .45 + i * .9, world);   // steps down from Cra 22
+for (const sx of [-1, 1]) box(1, 4.6, BLOCK, M.concreteDark, sx * (HP + .5), -1.9, pz, world);
+box(BLOCK + 2, 4.6, 1, M.concreteDark, 0, -1.9, pz + HP + .5, world);
+for (const sx of [-1, 1]) box(14, 3.2, 1, M.concreteDark, sx * 16, -2.4, pz - HP + 7.6, world);   // mural walls beside the stairs
+
+// Bolívar Cóndor (very abstract)
+const condor = new THREE.Group(); condor.position.set(17, -4, pz - 6); world.add(condor);
+box(2, 13, 2.6, M.concreteDark, 0, 6.5, 0, condor);
+const body = cone(.9, 5, 5, M.bronze, condor); body.position.set(0, 15, .6); body.rotation.x = -.9;
+for (const sx of [-1, 1]) { const w = box(4.6, .25, 1.6, M.bronze, sx * 2.2, 16.4, -.3, condor); w.rotation.z = sx * .55; w.rotation.y = sx * -.3; }
+
+// the few trees that actually exist, on the Calle 22 side
+const leafM = mat(0x55585b), trunkM = mat(0x2e2f31);
+[[30.4, -16], [30.4, -4], [30.4, 9], [-30.4, -20]].forEach(([x, z], n) => {
+  const g = new THREE.Group(); g.position.set(x, .3, z); world.add(g);
+  const tr = new THREE.Mesh(new THREE.CylinderGeometry(.25, .4, 5, 6), trunkM); tr.position.y = 2.5; tr.castShadow = true; g.add(tr);
+  for (let i = 0; i < 3; i++) { const l = new THREE.Mesh(new THREE.IcosahedronGeometry(2.3 - i * .45, 0), leafM); l.position.set(Math.sin(i * 2 + n) * .9, 5.4 + i * 1.4, Math.cos(i * 3 + n) * .9); l.castShadow = true; g.add(l); }
+});
+
+// ridge silhouettes far away
+for (let i = 0; i < 22; i++) {
+  const a = i / 22 * Math.PI * 2 + Math.sin(i * 3) * .1, r = 520 + (i * 53 % 160), h = 60 + (i * 37 % 90);
+  const m = new THREE.Mesh(new THREE.ConeGeometry(h * 2, h, 6, 1), mat(0x3a3c3f));
+  m.position.set(Math.cos(a) * r, h / 2 - 2, Math.sin(a) * r); m.rotation.y = i; scene.add(m);
+}
+const lampM = new THREE.MeshBasicMaterial({ color: 0xffffff });
+const cars = [0x9a9c9e, 0x4a4c4f, 0xd8d8d4, 0x6c6e72, 0xb8b8b4].map((c, i) => {
+  const g = new THREE.Group(), dir = i % 2 ? 1 : -1;
+  box(4.2, 1.1, 1.9, mat(c), 0, .9, 0, g); box(2.2, .9, 1.7, mat(0x1b1c1f), -.2, 1.8, 0, g);
+  for (const s of [-1, 1]) { const l = new THREE.Mesh(new THREE.SphereGeometry(.22, 6, 4), lampM); l.position.set(dir * 2.1, .9, s * .6); g.add(l); }
+  g.position.set(i * 61 - 150, 0, dir > 0 ? 36 : 39.6); g.userData.v = dir * (8 + i * 1.5); world.add(g); return g;
+});
+
+/* ---------- dust ---------- */
+const DUST = 420, dPos = new Float32Array(DUST * 3).fill(-999), dVel = new Float32Array(DUST * 3), dLife = new Float32Array(DUST);
+const dustGeo = new THREE.BufferGeometry(); dustGeo.setAttribute('position', new THREE.BufferAttribute(dPos, 3));
+const dustTex = canvasTex(64, 64, (c) => { const g = c.createRadialGradient(32, 32, 0, 32, 32, 32); g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(1, 'rgba(255,255,255,0)'); c.fillStyle = g; c.fillRect(0, 0, 64, 64); });
+const dust = new THREE.Points(dustGeo, new THREE.PointsMaterial({ size: 7, map: dustTex, color: 0xcfcfcb, transparent: true, opacity: .4, depthWrite: false }));
+dust.frustumCulled = false; scene.add(dust);
+let dNext = 0;
+function puff(n) {
+  for (let k = 0; k < n; k++) {
+    const i = dNext = (dNext + 1) % DUST, a = Math.random() * 6.28;
+    dPos[i * 3] = -17 + Math.random() * 9; dPos[i * 3 + 1] = 24 + Math.random() * 12; dPos[i * 3 + 2] = 12 + Math.random() * 9;
+    dVel[i * 3] = Math.cos(a) * 5; dVel[i * 3 + 1] = Math.random() * 5 - 1; dVel[i * 3 + 2] = Math.sin(a) * 5 + 2;
+    dLife[i] = 2 + Math.random() * 2.5;
+  }
+}
+
+/* ---------- tilt + earthquake ---------- */
+let tilt = 1, tiltFrom = 1, tiltTo = 1, tiltT = 1, quakeT = -1;
+const smooth = (t) => t * t * (3 - 2 * t);
+function bounceOut(t) {
+  const n = 7.5625, d = 2.75;
+  if (t < 1 / d) return n * t * t;
+  if (t < 2 / d) return n * (t -= 1.5 / d) * t + .75;
+  if (t < 2.5 / d) return n * (t -= 2.25 / d) * t + .9375;
+  return n * (t -= 2.625 / d) * t + .984375;
+}
+const bA = document.getElementById('b-antes'), bD = document.getElementById('b-despues'), bQ = document.getElementById('b-quake');
+const labelTower = document.getElementById('l-tower'), labelSpire = document.getElementById('l-spire');
+function applyTilt(t) {
+  tilt = t;
+  pivot.rotation.z = -.37 * t;          // towards the centre of the facade
+  pivot.rotation.x = -.13 * t;          // and back, onto the roof
+  pivot.position.y = H1 - .9 * t;
+  cracks.forEach(c => c.material.opacity = Math.min(1, t * 1.6));
+  rubble.scale.setScalar(Math.max(.001, smooth(Math.min(1, t * 1.5)))); rubble.visible = t > .02;
+  labelTower.textContent = t > .5 ? 'Torre inclinada' : 'Torre del reloj';
+  labelTower.classList.toggle('warn', t > .5);
+}
+function setState(after) { bA.classList.toggle('on', !after); bD.classList.toggle('on', after); }
+function tweenTilt(to) { tiltFrom = tilt; tiltTo = to; tiltT = 0; }
+bA.onclick = () => { if (quakeT < 0) { setState(false); tweenTilt(0); } };
+bD.onclick = () => { if (quakeT < 0) { setState(true); tweenTilt(1); } };
+bQ.onclick = () => {
+  if (quakeT >= 0) return;
+  setState(false); tiltT = 1; applyTilt(0); quakeT = 0; bQ.disabled = true; goTo('torre');
+};
+
+/* ---------- camera views ---------- */
+const VIEWS = {
+  fachada: [[0, 12, 122], [0, 38, 0]],
+  aerea: [[-96, 128, 124], [0, 30, 0]],
+  torre: [[-46, 40, 104], [-9, 36, 14]],
+};
+let cam = null;
+function goTo(name, dur = 1.7) {
+  const [p, t] = VIEWS[name]; controls.autoRotate = false;
+  const t1 = new THREE.Vector3(...t), k = THREE.MathUtils.clamp(1.6 / camera.aspect, 1, 2.2);   // step back on narrow screens
+  cam = { t: 0, dur, p0: camera.position.clone(), t0: controls.target.clone(), p1: new THREE.Vector3(...p).sub(t1).multiplyScalar(k).add(t1), t1 };
+  document.querySelectorAll('#views button').forEach(b => b.classList.toggle('on', b.dataset.view === name));
+}
+document.querySelectorAll('#views button').forEach(b => b.onclick = () => goTo(b.dataset.view));
+controls.addEventListener('start', () => { cam = null; document.querySelectorAll('#views button').forEach(b => b.classList.remove('on')); });
+
+/* ---------- labels ---------- */
+const v3 = new THREE.Vector3();
+function place(el, anchor) {
+  anchor.getWorldPosition(v3).project(camera);
+  el.style.opacity = v3.z < 1 ? 1 : 0;
+  el.style.left = ((v3.x * .5 + .5) * innerWidth) + 'px';
+  el.style.top = ((-v3.y * .5 + .5) * innerHeight) + 'px';
+}
+
+/* ---------- loop ---------- */
+const clock = new THREE.Clock();
+applyTilt(1);
+function frame() {
+  const raw = Math.min(clock.getDelta(), 1.5), dt = Math.min(raw, .05), now = clock.elapsedTime;
+
+  if (quakeT >= 0) {                                   // scripted earthquake
+    quakeT += raw;
+    const env = Math.sin(Math.min(1, quakeT / 3.6) * Math.PI) ** .7 * (quakeT < 3.6 ? 1 : 0);
+    world.position.set(Math.sin(now * 61) * .5 * env, Math.sin(now * 83) * .12 * env, Math.cos(now * 47) * .5 * env);
+    const k = THREE.MathUtils.clamp((quakeT - 1.3) / 2.4, 0, 1);
+    applyTilt(bounceOut(k * k * (2 - k)));
+    if (quakeT > 1.3 && quakeT < 3.9) puff(4);
+    if (k > .5) setState(true);
+    if (quakeT > 4.6) { quakeT = -1; world.position.set(0, 0, 0); applyTilt(1); bQ.disabled = false; }
+  } else if (tiltT < 1) {
+    tiltT = Math.min(1, tiltT + raw / 1.4);
+    applyTilt(THREE.MathUtils.lerp(tiltFrom, tiltTo, smooth(tiltT)));
+  }
+
+  for (let i = 0; i < DUST; i++) {
+    if (dLife[i] <= 0) continue;
+    dLife[i] -= dt;
+    if (dLife[i] <= 0) { dPos[i * 3 + 1] = -999; continue; }
+    for (let a = 0; a < 3; a++) dPos[i * 3 + a] += dVel[i * 3 + a] * dt;
+    dVel[i * 3 + 1] -= 1.6 * dt; dVel[i * 3] *= .985; dVel[i * 3 + 2] *= .985;
+  }
+  dustGeo.attributes.position.needsUpdate = true;
+
+  cars.forEach(c => { c.position.x += c.userData.v * dt; if (Math.abs(c.position.x) > 190) c.position.x = -Math.sign(c.userData.v) * 190; });
+
+  if (cam) {
+    cam.t = Math.min(1, cam.t + raw / cam.dur);
+    const e = smooth(cam.t);
+    camera.position.lerpVectors(cam.p0, cam.p1, e); controls.target.lerpVectors(cam.t0, cam.t1, e);
+    if (cam.t >= 1) cam = null;
+  }
+  controls.update();
+  renderer.render(scene, camera);
+  place(labelSpire, anchorSpire); place(labelTower, anchorTower);
+  requestAnimationFrame(frame);
+}
+frame();
+
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix(); renderer.setSize(innerWidth, innerHeight);
+});
+setTimeout(() => { document.getElementById('intro').classList.add('gone'); goTo('aerea', 3.2); }, 500);
+</script>
+</body>
+</html>
